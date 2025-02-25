@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Server Monitoring</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="https://i.ibb.co.com/MDjwZRCQ/dikdik.jpg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        body {
+            font-family: "Nunito", serif;
+        }
+
+        /* Animasi loading
+        .loading span {
+            display: none;
+        }
+        .loading i {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        } */
+    </style>
+</head>
+<body class="bg-[#ededed]">
+    <div class="w-full justify-center flex">
+        <h1 class="text-5xl font-black text-[#222831] text-center p-12">MONITORING SERVER</h1>
+    </div>
+    <div class="flex m-6 gap-8">
+        <div class="items-center justify-center flex flex-col">
+            <div class="bg-white w-full p-6 rounded-3xl drop-shadow-lg">
+                <h1 class="text-center font-black text-3xl mb-6">SSH REMOTE</h1>
+                <div class="flex flex-col items-center w-full text-center gap-4 mb-6">
+                    <div class="flex w-auto gap-2">
+                        <input class="border-2 border-gray-300 rounded-lg px-4 py-2 w-full border-none bg-[#ededed] transition-all" type="text" id="host" placeholder="Address">
+                        <input class="border-2 border-gray-300 rounded-lg px-4 py-2 w-1/2 border-none bg-[#ededed]" type="number" id="port" placeholder="Port" value="22">
+                    </div>
+                    <input class="border-2 border-gray-300 rounded-lg px-4 py-2 w-full border-none bg-[#ededed]" type="text" id="username" placeholder="Username">
+                    <input class="border-2 border-gray-300 rounded-lg px-4 py-2 w-full border-none bg-[#ededed]" type="password" id="password" placeholder="Password">
+                    <div class="flex gap-2">
+                        <button class="border-2 border-black px-6 py-2 rounded-lg font-bold" onclick="refreshPage()">Disconnect</button>
+                        <button id="connectButton" class="bg-[#222831] text-lg text-white px-6 py-2 flex items-center gap-2 rounded-lg font-bold" onclick="startMonitoring()">
+                            <span id="connectButtonText">Connect</span>
+                            <i id="connectButtonIcon" class="fa-solid fa-caret-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="items-center flex flex-col drop-shadow-lg">
+            <div class="gap-4 flex flex-col">
+                <div class="bg-white p-4 rounded-xl mx-4">
+                    <h1 class="font-extrabold text-lg"><i class="fa-solid fa-microchip mr-2"></i>CPU</h1>
+                    <div class="flex flex-col grid grid-cols-2 md:grid-cols-2">
+                        <canvas id="cpuChart" height="100"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-xl mx-4">
+                    <h1 class="font-extrabold text-lg"><i class="fa-solid fa-memory mr-2"></i>Memory</h1>
+                    <div class="flex flex-col grid grid-cols-2 md:grid-cols-2 gap-2">
+                        <canvas id="memoryChart" height="100"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-x-6 w-full grid grid-cols-3 justify-center px-4">
+                <div class="mt-4 bg-white p-4 rounded-lg">
+                    <h2 class="text-center font-bold text-xl">Disk Space</h2>
+                    <div id="diskSpace" class="text-center text-gray-500 text-lg font-semibold">-</div>
+                </div>
+                <div class="mt-4 bg-white p-4 rounded-lg">
+                    <h2 class="text-center font-bold text-xl">Uptime</h2>
+                    <div id="uptime" class="text-center text-gray-500 text-lg font-semibold">-</div>
+                </div>
+                <div class="mt-4 bg-white p-4 rounded-lg">
+                    <h2 class="text-center font-bold text-xl">Upstream</h2>
+                    <div id="upstream" class="text-center text-gray-500 text-lg font-semibold">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="w-full items-center flex">
+        <div class="mx-6 w-full bg-white p-6 rounded-3xl mb-6 drop-shadow-lg">
+            <h2 class="text-center font-black text-3xl mb-6">SSH TERMINAL</h2>
+            <div class="h-full w-full">
+                <iframe id="terminal" src="" class="w-full h-full border-none" style="resize: vertical"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const maxDataPoints = 20; // Batas jumlah data yang ditampilkan
+
+        const cpuChart = new Chart(document.getElementById('cpuChart').getContext('2d'), {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'CPU Usage (%)', data: [], borderColor: '#49367a', backgroundColor: 'rgba(79, 70, 229, 0.2)', fill: true, tension: 0.3 }] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    zoom: {
+                        zoom: {
+                            wheel: { enabled: true },
+                            pinch: { enabled: true },
+                            mode: 'x'
+                        },
+                        pan: {
+                            enabled: true,
+                            mode: 'x'
+                        }
+                    }
+                }
+            }
+        });
+
+        const memoryChart = new Chart(document.getElementById('memoryChart').getContext('2d'), {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Memory Usage (%)', data: [], borderColor: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.2)', fill: true, tension: 0.3 }] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    zoom: {
+                        zoom: {
+                            wheel: { enabled: true },
+                            pinch: { enabled: true },
+                            mode: 'x'
+                        },
+                        pan: {
+                            enabled: true,
+                            mode: 'x'
+                        }
+                    }
+                }
+            }
+        });
+
+        function startMonitoring() {
+            const host = document.getElementById('host').value;
+            const port = document.getElementById('port').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // Set up ShellInABox terminal
+            const terminalUrl = `https://10.201.0.228:4222/`;
+            document.getElementById('terminal').src = terminalUrl;
+
+            // Start monitoring
+            updateCharts();
+            setInterval(updateCharts, 5000);
+        }
+
+        function updateCharts() {
+            const connectButton = document.getElementById('connectButton');
+            const connectButtonText = document.getElementById('connectButtonText');
+            const connectButtonIcon = document.getElementById('connectButtonIcon');
+
+            connectButton.classList.add('loading');
+            connectButtonText.style.display = 'none';
+            connectButtonIcon.classList.remove('fa-caret-right');
+            connectButtonIcon.classList.add('fa-spinner');
+
+            const host = document.getElementById('host').value;
+            const port = document.getElementById('port').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            fetch('/monitor', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ host, port, username, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const timestamp = new Date().toLocaleTimeString();
+
+                // Update CPU Chart
+                cpuChart.data.labels.push(timestamp);
+                cpuChart.data.datasets[0].data.push(data.cpu_usage);
+                if (cpuChart.data.labels.length > 20) {
+                    cpuChart.data.labels.shift();
+                    cpuChart.data.datasets[0].data.shift();
+                }
+                cpuChart.update();
+
+                // Update Memory Chart
+                memoryChart.data.labels.push(timestamp);
+                memoryChart.data.datasets[0].data.push(data.memory_usage);
+                if (memoryChart.data.labels.length > 20) {
+                    memoryChart.data.labels.shift();
+                    memoryChart.data.datasets[0].data.shift();
+                }
+                memoryChart.update();
+
+                document.getElementById('diskSpace').innerText = data.disk_space;
+                document.getElementById('uptime').innerText = data.uptime;
+                document.getElementById('upstream').innerText = data.upstream;
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function handleEnter(event) {
+            if (event.key === 'Enter') {
+                runSSHCommand();
+            }
+        }
+
+        //
+
+        function refreshPage() {
+            location.reload(); // Refresh halaman
+        }
+    </script>
+</body>
+</html>

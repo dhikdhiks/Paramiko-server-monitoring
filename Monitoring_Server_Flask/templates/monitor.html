@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Server Monitoring Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Terminal Theme Styles */
+        #terminal {
+            background: #282a36;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* Custom styles for ShellInABox */
+        :root {
+            --terminal-bg: #282a36;
+            --terminal-text: #f8f8f2;
+            --terminal-cursor: #f8f8f2;
+            --terminal-selection: #44475a;
+        }
+
+        /* Override ShellInABox default styles */
+        body#vt100 {
+            background-color: var(--terminal-bg) !important;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+            padding: 1rem !important;
+        }
+
+        #vt100 #cursor {
+            background-color: var(--terminal-cursor) !important;
+        }
+
+        #vt100 #screen {
+            color: var(--terminal-text) !important;
+        }
+
+        #vt100 .ansi1 { font-weight: bold !important; }
+        #vt100 .ansi32 { color: #50fa7b !important; } /* Green */
+        #vt100 .ansi33 { color: #f1fa8c !important; } /* Yellow */
+        #vt100 .ansi34 { color: #bd93f9 !important; } /* Blue */
+        #vt100 .ansi35 { color: #ff79c6 !important; } /* Magenta */
+        #vt100 .ansi36 { color: #8be9fd !important; } /* Cyan */
+
+        /* Selection style */
+        #vt100 ::selection {
+            background-color: var(--terminal-selection) !important;
+            color: var(--terminal-text) !important;
+        }
+
+        /* Custom scrollbar */
+        #vt100::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #vt100::-webkit-scrollbar-track {
+            background: var(--terminal-bg);
+        }
+
+        #vt100::-webkit-scrollbar-thumb {
+            background: #44475a;
+            border-radius: 4px;
+        }
+
+        #vt100::-webkit-scrollbar-thumb:hover {
+            background: #6272a4;
+        }
+
+        /* Terminal container styles */
+        .terminal-container {
+            position: relative;
+            background: #1e1f29;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .terminal-header {
+            background: #191a21;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .terminal-button {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .terminal-close { background: #ff5555; }
+        .terminal-minimize { background: #f1fa8c; }
+        .terminal-maximize { background: #50fa7b; }
+
+        /* Font loading */
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-center font-bold text-3xl p-4 mb-6">Server Monitoring Dashboard</h1>
+        
+        <!-- Connection Form -->
+        <div class="flex flex-col items-center w-full text-center gap-2 mb-8">
+            <input class="border-2 border-black w-1/6 text-center rounded-xl p-2" type="text" id="host" placeholder="Server Host (IP/Domain)">
+            <input class="border-2 border-black w-1/6 text-center rounded-xl p-2" type="number" id="port" placeholder="SSH Port" value="22">
+            <input class="border-2 border-black w-1/6 text-center rounded-xl p-2" type="text" id="username" placeholder="Username">
+            <input class="border-2 border-black w-1/6 text-center rounded-xl p-2" type="password" id="password" placeholder="Password">
+            <button class="bg-blue-500 text-white rounded-xl px-4 py-2 hover:bg-blue-600" onclick="startMonitoring()">Start Monitoring</button>
+        </div>
+
+        <!-- Main Dashboard Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Charts Section -->
+            <div class="col-span-1 space-y-6">
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <canvas id="cpuChart" class="w-full h-64"></canvas>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow">
+                    <canvas id="memoryChart" class="w-full h-64"></canvas>
+                </div>
+            </div>
+
+            <!-- Terminal Section -->
+            <div class="col-span-1">
+                <div class="terminal-container shadow-lg">
+                    <div class="terminal-header">
+                        <div class="terminal-button terminal-close"></div>
+                        <div class="terminal-button terminal-minimize"></div>
+                        <div class="terminal-button terminal-maximize"></div>
+                        <span class="text-gray-400 text-sm ml-4">Terminal</span>
+                    </div>
+                    <div class="h-[600px] w-full">
+                        <iframe id="terminal" src="" class="w-full h-full border-none"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const cpuChart = new Chart(document.getElementById('cpuChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU Usage (%)',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderWidth: 2,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+
+        const memoryChart = new Chart(document.getElementById('memoryChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Memory Usage (%)',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderWidth: 2,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+
+        function startMonitoring() {
+            const host = document.getElementById('host').value;
+            const port = document.getElementById('port').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // Set up ShellInABox terminal
+            const terminalUrl = `https://10.201.0.228:4222/`;
+            document.getElementById('terminal').src = terminalUrl;
+
+            // Start monitoring
+            updateCharts();
+            setInterval(updateCharts, 5000);
+        }
+
+        function updateCharts() {
+            const host = document.getElementById('host').value;
+            const port = document.getElementById('port').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            fetch('/monitor', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ host, port, username, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const timestamp = new Date().toLocaleTimeString();
+
+                // Update CPU Chart
+                cpuChart.data.labels.push(timestamp);
+                cpuChart.data.datasets[0].data.push(data.cpu_usage);
+                if (cpuChart.data.labels.length > 20) {
+                    cpuChart.data.labels.shift();
+                    cpuChart.data.datasets[0].data.shift();
+                }
+                cpuChart.update();
+
+                // Update Memory Chart
+                memoryChart.data.labels.push(timestamp);
+                memoryChart.data.datasets[0].data.push(data.memory_usage);
+                if (memoryChart.data.labels.length > 20) {
+                    memoryChart.data.labels.shift();
+                    memoryChart.data.datasets[0].data.shift();
+                }
+                memoryChart.update();
+            })
+            .catch(error => console.error('Error:', error));
+        }
+    </script>
+</body>
+</html>

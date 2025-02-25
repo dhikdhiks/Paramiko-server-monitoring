@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Monitoring</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .container {
+            margin-top: 20px;
+        }
+        .card {
+            margin-bottom: 20px;
+        }
+        .terminal {
+            background-color: black;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .terminal-input {
+            background-color: #333;
+            color: white;
+            border: none;
+            outline: none;
+            width: 100%;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center">Server Monitoring</h1>
+
+        <!-- Form SSH -->
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">SSH Connection</h5>
+                <form id="ssh-form">
+                    <div class="mb-3">
+                        <label for="ip" class="form-label">IP Address</label>
+                        <input type="text" class="form-control" id="ip" placeholder="Enter IP Address" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" placeholder="Enter Username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" placeholder="Enter Password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Connect</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Resource Monitoring -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Disk Usage</h5>
+                        <div id="disk-usage"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Memory Usage</h5>
+                        <div id="memory-usage"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">CPU Usage</h5>
+                        <div id="cpu-usage"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Uptime</h5>
+                        <div id="uptime"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal -->
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Terminal</h5>
+                <div class="terminal" id="terminal-output"></div>
+                <input type="text" class="terminal-input" id="terminal-input" placeholder="Type command here...">
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        // Chart.js setup
+        const ctxDisk = document.getElementById('disk-usage').getContext('2d');
+        const ctxMemory = document.getElementById('memory-usage').getContext('2d');
+        const ctxCpu = document.getElementById('cpu-usage').getContext('2d');
+
+        const diskChart = new Chart(ctxDisk, { type: 'bar', data: { labels: ['Disk'], datasets: [{ label: 'Usage (%)', data: [0], backgroundColor: 'blue' }] }, options: { responsive: true } });
+        const memoryChart = new Chart(ctxMemory, { type: 'bar', data: { labels: ['Memory'], datasets: [{ label: 'Usage (%)', data: [0], backgroundColor: 'green' }] }, options: { responsive: true } });
+        const cpuChart = new Chart(ctxCpu, { type: 'bar', data: { labels: ['CPU'], datasets: [{ label: 'Usage (%)', data: [0], backgroundColor: 'red' }] }, options: { responsive: true } });
+
+        // Update charts with real-time data
+        socket.on('connect', () => {
+            socket.emit('get_system_info');
+        });
+
+        socket.on('system_info', (data) => {
+            diskChart.data.datasets[0].data = [data.disk_usage];
+            memoryChart.data.datasets[0].data = [data.memory_usage];
+            cpuChart.data.datasets[0].data = [data.cpu_usage];
+            document.getElementById('uptime').innerText = `Uptime: ${data.uptime}`;
+            diskChart.update();
+            memoryChart.update();
+            cpuChart.update();
+        });
+
+        // SSH Form Handling
+        document.getElementById('ssh-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const ip = document.getElementById('ip').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            socket.emit('ssh_connect', { ip, username, password });
+        });
+
+        socket.on('ssh_status', (data) => {
+            if (data.status === 'connected') {
+                alert('SSH Connected!');
+            } else {
+                alert(`SSH Failed: ${data.error}`);
+            }
+        });
+
+        socket.on('ssh_output', (data) => {
+            const terminalOutput = document.getElementById('terminal-output');
+            terminalOutput.innerHTML += data.output;
+            terminalOutput.scrollTop = terminalOutput.scrollHeight;
+        });
+
+        document.getElementById('terminal-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const input = e.target.value;
+                socket.emit('ssh_input', { input });
+                e.target.value = '';
+            }
+        });
+    </script>
+</body>
+</html>
